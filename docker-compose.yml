@@ -14,5 +14,15 @@ services:
     volumes:
       - timetable_data:/app/data
 
+  quick-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: share-timetable-quick-tunnel
+    profiles: ["quick"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://timetable:3000
+    depends_on:
+      timetable:
+        condition: service_healthy
+
 volumes:
   timetable_data:

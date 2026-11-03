@@ -40,6 +40,26 @@ curl http://127.0.0.1:8787/api/health
 
 정상이라면 {"ok":true}가 반환됩니다. Docker 데이터는 timetable_data 볼륨에 보존됩니다. 컨테이너를 재생성해도 저장한 시간은 유지됩니다.
 
+### Cloudflare Quick Tunnel (임시 공유 · 별도 도메인 불필요)
+
+팀원들과 빠르게 시험하려면 **일반 Tunnel이나 DNS를 수정하지 말고** 다음 명령어로 앱 + Quick Tunnel을 함께 띄우세요.
+
+~~~bash
+docker compose --profile quick up -d --build
+docker compose --profile quick logs -f quick-tunnel
+~~~
+
+로그에 나오는 `https://...trycloudflare.com` 주소가 공유 URL입니다. 관리자 페이지는 `https://...trycloudflare.com/admin`, 팀 방은 `https://...trycloudflare.com/{key}` 형식입니다.
+
+- `quick-tunnel`은 동일한 Docker Compose 네트워크에서 `http://timetable:3000`에 연결합니다. 기존 `keyda-tunnel`이나 Cloudflare 설정을 건드리지 않습니다.
+- Quick Tunnel은 **임시 테스트용**이며 재시작 시 `trycloudflare.com` 주소가 변경될 수 있습니다. 다시 발급된 주소를 팀원에게 공유해야 합니다.
+- 시간표 데이터는 Docker 볼륨에 저장되므로 **터널 URL이 변경되어도 해당 서버의 방과 선택 데이터는 유지**됩니다.
+- 중지는 `docker compose --profile quick down`입니다. 데이터를 유지하려면 `down -v`는 실행하지 마세요.
+- 주소를 아는 누구나 방 내용을 볼 수 있으므로 개인 일정 등 민감한 내용을 공개하지 마세요.
+- 관리자 비밀번호는 반드시 길고 예측하기 어렵게 설정하세요.
+
+### 고정 도메인으로 연결할 때만 (선택)
+
 ### Cloudflare Tunnel 연결
 
 기존 Cloudflare Tunnel이 **host 네트워크**에서 실행된다면, 새 Public Hostname의 Service URL을 다음으로 설정합니다.
