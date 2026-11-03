@@ -28,3 +28,12 @@
 .admin-member{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid #eee8ec;font-size:12px}
 .admin-member>span:nth-child(2){flex:1;font-weight:700}
 .admin-member>.button{margin-left:auto}
+
+.join-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;background:#f7f2f5;padding:4px;border-radius:11px;margin:0 0 19px}
+.join-options button{background:none;border:0;color:#8e8188;border-radius:8px;font-size:12px;font-weight:700;padding:10px 7px}
+.join-options button.active{color:var(--wine);background:#fff;box-shadow:0 2px 8px #30111b12}
+.recovery-heading{display:flex;gap:11px;align-items:center}
+.recovery-heading h2{font-size:13px;letter-spacing:-.3px}
+.recovery-heading p{font-size:10px;color:var(--muted);margin-top:4px}
+.recovery-note{font-size:11px;line-height:1.7;color:#80747b;margin-top:14px}
+.recovery-card .button.full{font-size:11px;margin-top:14px}

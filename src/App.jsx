@@ -244,22 +244,29 @@ function AdminPage() {
   </div>;
 }
 
-function JoinDialog({room, onJoin, busy, error}) {
+function JoinDialog({room, onJoin, onRecover, busy, error}) {
   const [name,setName]=useState('');
+  const [recoveryCode,setRecoveryCode]=useState('');
+  const [method,setMethod]=useState('join');
   return <div className="modal-backdrop">
     <div className="join-dialog card" role="dialog" aria-modal="true" aria-labelledby="join-title">
       <span className="section-icon"><UsersRound size={25}/></span>
       <div className="eyebrow small">WELCOME TO SHARETIME</div>
-      <h2 id="join-title">함께할 준비 되셨나요?</h2>
-      <p>이름을 입력하고 <strong>{room.title}</strong> 시간표에 참여하세요. 별도의 회원가입은 필요 없어요.</p>
-      <form onSubmit={(e)=>{e.preventDefault();onJoin(name.trim());}}>
+      <h2 id="join-title">{method==='join'?'함께할 준비 되셨나요?':'내 참여 정보 복구'}</h2>
+      <p>{method==='join'?<>이름을 입력하고 <strong>{room.title}</strong> 시간표에 참여하세요. 별도의 회원가입은 필요 없어요.</>:<>이전에 받은 개인 복구 코드를 입력하면 같은 이름으로 다시 접속하고 기존 선택 시간도 유지할 수 있어요.</>}</p>
+      <div className="join-options"><button type="button" className={method==='join'?'active':''} onClick={()=>setMethod('join')}>처음 참여</button><button type="button" className={method==='recover'?'active':''} onClick={()=>setMethod('recover')}>기존 참여 복구</button></div>
+      {method==='join'?<form onSubmit={(e)=>{e.preventDefault();onJoin(name.trim());}}>
         <label className="form-label" htmlFor="joinName">참여할 이름</label>
         <input id="joinName" className="text-input" autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="이름을 입력해주세요" maxLength={24} required/>
         <button className="button primary full" disabled={busy||!name.trim()||room.locked}>{busy?<><LoaderCircle className="spin" size={16}/> 참여 중...</>:<>시간표 참여하기 <ArrowRight size={16}/></>}</button>
-      </form>
-      {room.locked&&<p className="field-error">관리자가 시간표를 잠갔습니다. 지금은 참여할 수 없습니다.</p>}
+      </form>:<form onSubmit={(e)=>{e.preventDefault();onRecover(recoveryCode.trim());}}>
+        <label className="form-label" htmlFor="recoveryCode">내 개인 복구 코드</label>
+        <textarea id="recoveryCode" className="text-input textarea" value={recoveryCode} onChange={e=>setRecoveryCode(e.target.value)} placeholder="기존에 복사한 개인 복구 코드를 붙여 넣으세요" rows={3} required/>
+        <button className="button primary full" disabled={busy||!recoveryCode.trim()}>{busy?<><LoaderCircle className="spin" size={16}/> 확인 중...</>:<>기존 참여 복구 <KeyRound size={16}/></>}</button>
+      </form>}
+      {room.locked&&method==='join'&&<p className="field-error">관리자가 시간표를 잠갔습니다. 지금은 새로운 참여를 할 수 없습니다.</p>}
       <Alert text={error}/>
-      <div className="modal-hint"><ShieldCheck size={15}/> 이 브라우저에 개인 수정 권한이 저장됩니다.</div>
+      <div className="modal-hint"><ShieldCheck size={15}/> 개인 복구 코드는 다른 사람에게 공유하지 마세요.</div>
     </div>
   </div>;
 }
@@ -447,8 +454,37 @@ function RoomPage({roomKey}) {
       const next={memberId:result.memberId,editToken:result.editToken,name};
       localStorage.setItem(STORAGE_PREFIX+roomKey,JSON.stringify(next));
       setSession(next);setMode('mine');await load(true);
+      setNotice('참여 완료! 오른쪽의 개인 복구 코드를 복사해 안전하게 보관해주세요.');
     }catch(e){setNameError(e.message);}
     finally{setBusyJoin(false);}
+  }
+  async function recover(code){
+    const parts=code.split('.');
+    if(parts.length!==2 || !/^[0-9a-f-]{36}$/.test(parts[0]) || !/^[0-9a-f]{64}$/.test(parts[1])){
+      setNameError('복구 코드 형식이 올바르지 않습니다. 복사한 전체 코드를 입력해주세요.');
+      return;
+    }
+    setBusyJoin(true);setNameError('');
+    try{
+      const result=await api('/rooms/'+roomKey+'/recover',{
+        method:'POST',body:JSON.stringify({memberId:parts[0],editToken:parts[1]})
+      });
+      const next={memberId:result.memberId,editToken:parts[1],name:result.name};
+      localStorage.setItem(STORAGE_PREFIX+roomKey,JSON.stringify(next));
+      setSession(next);setMode('mine');await load(true);
+      setNotice('기존 참여 정보와 선택 시간을 복구했어요.');
+    }catch(e){setNameError(e.message);}
+    finally{setBusyJoin(false);}
+  }
+  async function copyRecoveryCode(){
+    if(!session)return;
+    try{
+      await copyText(session.memberId+'.'+session.editToken);
+      setNotice('개인 복구 코드를 복사했어요. 비공개로 보관해주세요.');
+      setError('');
+    }catch{
+      setError('복구 코드 복사에 실패했어요. 브라우저의 클립보드 권한을 확인해주세요.');
+    }
   }
   async function copyRoomLink(){
     try{await copyText(shareLink(roomKey));setNotice('공유 링크를 복사했어요.');}
@@ -533,11 +569,16 @@ function RoomPage({roomKey}) {
             {recommendations.length?recommendations.map((item,i)=><button className="recommendation" key={item.date+'-'+item.start} onClick={()=>{setSelected({date:item.date,index:item.start});document.querySelector('.calendar-scroll')?.scrollTo({top:Math.max(0,item.start*32-150),behavior:'smooth'});}}><span className="recommend-rank">{String(i+1).padStart(2,'0')}</span><span><strong>{dateTitle(item.date)} ({DAY_NAMES[days.indexOf(item.date)]})</strong><small>{timeLabel(item.start)} – {timeLabel(item.end)} · {item.duration/60}시간</small></span><ArrowRight size={15}/></button>):<div className="empty-recommend"><Sparkles size={22}/><p>아직 전원 가능한 1시간 이상 구간이 없어요.</p><span>팀원들이 시간을 등록하면 여기에 표시됩니다.</span></div>}
           </section>
           <section className="card roster"><div className="roster-heading"><h2>참여한 팀원 <span className="count-pill">{total}</span></h2>{session&&<button className="muted-link" onClick={exitSession}><LogOut size={14}/> 이름 변경</button>}</div><div className="roster-list">{members.map((member,i)=><div className="person" key={member.id}><Initial name={member.name} index={i}/><span>{member.name}</span>{member.id===session?.memberId&&<small>나</small>}</div>)}{!members.length&&<p className="empty-hint">아직 참여자가 없어요.</p>}</div></section>
+          {session&&<section className="card recovery-card">
+            <div className="recovery-heading"><span className="section-icon small-icon"><KeyRound size={19}/></span><div><h2>내 개인 복구 코드</h2><p>터널 주소 변경 · 다른 기기 접속 시 사용</p></div></div>
+            <p className="recovery-note">지금 복사해 비공개로 보관하세요. 이 코드로 내 이름과 기존 선택 시간을 다시 불러올 수 있어요.</p>
+            <button className="button subtle full" type="button" onClick={copyRecoveryCode}><Copy size={15}/> 개인 복구 코드 복사</button>
+          </section>
         </aside>
       </div>
       <div className="below-note"><Info size={15}/> 모든 시간은 한국 표준시(KST) 기준입니다. 선택하지 않은 시간은 참석 가능으로 집계되지 않습니다.</div>
     </main>
-    {!session&&<JoinDialog room={room} onJoin={join} busy={busyJoin} error={nameError}/>}
+    {!session&&<JoinDialog room={room} onJoin={join} onRecover={recover} busy={busyJoin} error={nameError}/>}
   </div>;
 }
 

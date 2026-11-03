@@ -83,6 +83,19 @@ export async function createApp({ store = createStore(':memory:'), adminPassword
     }
   });
 
+  // Reconnect a member after a Quick Tunnel hostname change or on a new device.
+  // A recovery code combines their public member ID and their private edit token.
+  app.post('/api/rooms/:key/recover', async (request, reply) => {
+    const room = store.room(request.params.key);
+    if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');
+    const { memberId, editToken } = request.body || {};
+    if (typeof memberId !== 'string' || !store.verifyMember(room.key, memberId, editToken)) {
+      return err(reply, 401, '복구 코드가 올바르지 않습니다.');
+    }
+    const member = store.member(memberId, room.key);
+    return { memberId: member.id, name: member.name };
+  });
+
   app.put('/api/rooms/:key/availability', async (request, reply) => {
     const room = store.room(request.params.key);
     if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');

@@ -31,6 +31,17 @@ test('members may only edit their own weekly slots', async (t) => {
   await app.inject({ method: 'POST', url: '/api/admin/rooms', headers: admin, payload: { key: 'dev-team', title: '개발 회의' } });
   const memberA = (await app.inject({ method: 'POST', url: '/api/rooms/dev-team/join', payload: { name: '시호' } })).json();
   const memberB = (await app.inject({ method: 'POST', url: '/api/rooms/dev-team/join', payload: { name: '유진' } })).json();
+  const recovered = await app.inject({
+    method: 'POST', url: '/api/rooms/dev-team/recover',
+    payload: { memberId: memberA.memberId, editToken: memberA.editToken }
+  });
+  assert.equal(recovered.statusCode, 200);
+  assert.deepEqual(recovered.json(), { memberId: memberA.memberId, name: '시호' });
+  const rejectedRecovery = await app.inject({
+    method: 'POST', url: '/api/rooms/dev-team/recover',
+    payload: { memberId: memberA.memberId, editToken: memberB.editToken }
+  });
+  assert.equal(rejectedRecovery.statusCode, 401);
   const weekStart = '2026-11-02';
   const authenticatedSession = await app.inject({
     method: 'GET',
