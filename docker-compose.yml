@@ -1,0 +1,18 @@
+services:
+  timetable:
+    build: .
+    container_name: share-timetable
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:8787:3000"
+    volumes:
+      - timetable_data:/app/data
+
+volumes:
+  timetable_data:
