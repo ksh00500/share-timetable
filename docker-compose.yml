@@ -19,7 +19,8 @@ services:
     container_name: share-timetable-quick-tunnel
     profiles: ["quick"]
     restart: unless-stopped
-    command: tunnel --no-autoupdate --url http://timetable:3000
+    network_mode: host
+    command: tunnel --no-autoupdate --url http://127.0.0.1:8787
     depends_on:
       timetable:
         condition: service_healthy
