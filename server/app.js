@@ -56,6 +56,19 @@ export async function createApp({ store = createStore(':memory:'), adminPassword
     return { room, weekStart, members: store.members(room.key), slots: store.weekSlots(room.key, weekStart) };
   });
 
+  // Check an existing browser session using its private edit token rather than
+  // assuming a cached public member list is authoritative.
+  app.get('/api/rooms/:key/session', async (request, reply) => {
+    const room = store.room(request.params.key);
+    if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');
+    const memberId = request.query?.memberId;
+    if (typeof memberId !== 'string' || !store.verifyMember(room.key, memberId, request.headers['x-member-token'])) {
+      return err(reply, 401, '기존 참여자 인증 정보가 유효하지 않습니다.');
+    }
+    const member = store.member(memberId, room.key);
+    return { memberId: member.id, name: member.name };
+  });
+
   app.post('/api/rooms/:key/join', async (request, reply) => {
     const room = store.room(request.params.key);
     if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');

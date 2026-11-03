@@ -19,7 +19,11 @@ async function api(path, options = {}) {
       cache: 'no-store'
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || '요청에 실패했습니다.');
+    if (!response.ok) {
+      const error = new Error(result.error || '요청에 실패했습니다.');
+      error.status = response.status;
+      throw error;
+    }
     return result;
   } catch (error) {
     if (error?.name === 'AbortError') {
@@ -133,6 +137,9 @@ function AdminPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [rosterRoom, setRosterRoom] = useState(null);
+  const [roomMembers, setRoomMembers] = useState({});
+  const [rosterLoading, setRosterLoading] = useState(null);
 
   const load = useCallback(async (pass) => {
     const {rooms: next} = await api('/admin/rooms', {headers:{'x-admin-key':pass}});
@@ -173,6 +180,27 @@ function AdminPage() {
     try {await copyText(shareLink(room.key));setNotice('공유 링크를 복사했어요.');}
     catch {setNotice('공유 주소: '+shareLink(room.key));}
   }
+  async function toggleRoster(room) {
+    if (rosterRoom === room.key) {setRosterRoom(null);return;}
+    setRosterRoom(room.key);setRosterLoading(room.key);setError('');
+    try {
+      const result = await api('/rooms/'+room.key);
+      setRoomMembers(previous=>({...previous,[room.key]:result.members}));
+    } catch(e) {setError(e.message);}
+    finally {setRosterLoading(null);}
+  }
+  async function removeMember(room, member) {
+    if (!window.confirm('"'+member.name+'" 참여자를 삭제할까요? 이 사람의 선택 시간도 모두 삭제되며 되돌릴 수 없습니다.')) return;
+    setError('');setNotice('');
+    try {
+      await api('/admin/rooms/'+room.key+'/members/'+encodeURIComponent(member.id), {
+        method:'DELETE',headers:{'x-admin-key':password}
+      });
+      const result = await api('/rooms/'+room.key);
+      setRoomMembers(previous=>({...previous,[room.key]:result.members}));
+      setNotice(member.name+' 참여자를 삭제했어요. 이제 해당 이름으로 다시 참여할 수 있습니다.');
+    } catch(e) {setError(e.message);}
+  }
 
   return <div className="site-shell">
     <header className="simple-header"><Brand/><a className="muted-link" href="/"><ChevronLeft size={16}/> 홈으로</a></header>
@@ -202,7 +230,13 @@ function AdminPage() {
           <div className="room-list">{rooms.map(room=><div className="admin-room" key={room.key}>
             <div className="admin-room-top"><div><strong>{room.title}</strong><span>/{room.key}</span></div>{room.locked&&<span className="locked-badge"><Lock size={12}/> 잠김</span>}</div>
             {room.description&&<p>{room.description}</p>}
-            <div className="admin-actions"><a className="button mini primary" href={'/'+room.key} target="_blank" rel="noreferrer">열기 <ExternalLink size={14}/></a><button className="button mini subtle" onClick={()=>copyLink(room)}><Copy size={14}/> 복사</button><button className="button mini subtle" onClick={()=>toggleLock(room)}>{room.locked?<Unlock size={14}/>:<Lock size={14}/>} {room.locked?'열기':'잠금'}</button><button className="button mini danger-icon" onClick={()=>deleteRoom(room)} aria-label={room.title+' 삭제'}><Trash2 size={15}/></button></div>
+            <div className="admin-actions"><a className="button mini primary" href={'/'+room.key} target="_blank" rel="noreferrer">열기 <ExternalLink size={14}/></a><button className="button mini subtle" onClick={()=>copyLink(room)}><Copy size={14}/> 복사</button><button className="button mini subtle" onClick={()=>toggleLock(room)}>{room.locked?<Unlock size={14}/>:<Lock size={14}/>} {room.locked?'열기':'잠금'}</button><button className="button mini subtle" onClick={()=>toggleRoster(room)}><UsersRound size={14}/> 참여자 관리</button><button className="button mini danger-icon" onClick={()=>deleteRoom(room)} aria-label={room.title+' 삭제'}><Trash2 size={15}/></button></div>
+            {rosterRoom===room.key&&<div className="admin-member-panel">
+              <h3>참여자 목록 <span>등록 상태 복구가 필요하면 해당 이름을 삭제한 뒤 다시 참여하세요.</span></h3>
+              {rosterLoading===room.key?<p className="empty-hint">참여자를 불러오는 중...</p>:(roomMembers[room.key]||[]).length===0?<p className="empty-hint">등록된 참여자가 없습니다.</p>:(roomMembers[room.key]||[]).map((member,index)=><div className="admin-member" key={member.id}>
+                <Initial name={member.name} index={index}/><span>{member.name}</span><button className="button mini danger-icon" onClick={()=>removeMember(room,member)} aria-label={member.name+' 참여자 삭제'}><Trash2 size={14}/> 삭제</button>
+              </div>)}
+            </div>}
           </div>)}</div>}
         </section>
       </div>
@@ -272,12 +306,29 @@ function RoomPage({roomKey}) {
     return ()=>{window.removeEventListener('pointerup',stop);window.removeEventListener('pointercancel',stop);};
   },[]);
 
+  // A just-created member is absent from the previously fetched public member list.
+  // Never clear a private session based on a potentially stale roster snapshot.
+  // Verify the saved token directly with the server instead.
   useEffect(()=>{
-    if(session && data && !data.members.some(member=>member.id===session.memberId)){
+    if(!session?.memberId || !session?.editToken) return;
+    let active = true;
+    api('/rooms/'+roomKey+'/session?memberId='+encodeURIComponent(session.memberId),{
+      headers:{'x-member-token':session.editToken}
+    }).then((verified)=>{
+      if(!active) return;
+      if(verified.name!==session.name) {
+        const updated={...session,name:verified.name};
+        localStorage.setItem(STORAGE_PREFIX+roomKey,JSON.stringify(updated));
+        setSession(updated);
+      }
+    }).catch((e)=>{
+      if(!active || e.status!==401) return;
       localStorage.removeItem(STORAGE_PREFIX+roomKey);
       setSession(null);setPending(null);setMode('all');
-    }
-  },[session,data,roomKey]);
+      setNameError('이 브라우저의 이전 참여 정보가 유효하지 않습니다. 동일한 이름이 이미 등록되어 있다면 관리자에게 참여자 초기화를 요청해주세요.');
+    });
+    return ()=>{active=false;};
+  },[roomKey,session?.memberId,session?.editToken]);
 
   const days=useMemo(()=>Array.from({length:7},(_,i)=>shiftDate(week,i)),[week]);
   const members=data?.members||[];

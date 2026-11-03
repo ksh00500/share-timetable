@@ -32,6 +32,19 @@ test('members may only edit their own weekly slots', async (t) => {
   const memberA = (await app.inject({ method: 'POST', url: '/api/rooms/dev-team/join', payload: { name: '시호' } })).json();
   const memberB = (await app.inject({ method: 'POST', url: '/api/rooms/dev-team/join', payload: { name: '유진' } })).json();
   const weekStart = '2026-11-02';
+  const authenticatedSession = await app.inject({
+    method: 'GET',
+    url: '/api/rooms/dev-team/session?memberId=' + encodeURIComponent(memberA.memberId),
+    headers: { 'x-member-token': memberA.editToken }
+  });
+  assert.equal(authenticatedSession.statusCode, 200);
+  assert.equal(authenticatedSession.json().name, '시호');
+  const rejectedSession = await app.inject({
+    method: 'GET',
+    url: '/api/rooms/dev-team/session?memberId=' + encodeURIComponent(memberA.memberId),
+    headers: { 'x-member-token': memberB.editToken }
+  });
+  assert.equal(rejectedSession.statusCode, 401);
   const payload = { memberId: memberA.memberId, weekStart, slots: [{ date: '2026-11-03', slotIndex: 18 }] };
   const stolen = await app.inject({ method: 'PUT', url: '/api/rooms/dev-team/availability', headers: { 'x-member-token': memberB.editToken }, payload });
   assert.equal(stolen.statusCode, 401);
