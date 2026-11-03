@@ -244,29 +244,31 @@ function AdminPage() {
   </div>;
 }
 
-function JoinDialog({room, onJoin, onRecover, busy, error}) {
+function JoinDialog({room, members, onJoin, onSelect, busy, error}) {
   const [name,setName]=useState('');
-  const [recoveryCode,setRecoveryCode]=useState('');
-  const [method,setMethod]=useState('join');
   return <div className="modal-backdrop">
     <div className="join-dialog card" role="dialog" aria-modal="true" aria-labelledby="join-title">
       <span className="section-icon"><UsersRound size={25}/></span>
       <div className="eyebrow small">WELCOME TO SHARETIME</div>
-      <h2 id="join-title">{method==='join'?'함께할 준비 되셨나요?':'내 참여 정보 복구'}</h2>
-      <p>{method==='join'?<>이름을 입력하고 <strong>{room.title}</strong> 시간표에 참여하세요. 별도의 회원가입은 필요 없어요.</>:<>이전에 받은 개인 복구 코드를 입력하면 같은 이름으로 다시 접속하고 기존 선택 시간도 유지할 수 있어요.</>}</p>
-      <div className="join-options"><button type="button" className={method==='join'?'active':''} onClick={()=>setMethod('join')}>처음 참여</button><button type="button" className={method==='recover'?'active':''} onClick={()=>setMethod('recover')}>기존 참여 복구</button></div>
-      {method==='join'?<form onSubmit={(e)=>{e.preventDefault();onJoin(name.trim());}}>
-        <label className="form-label" htmlFor="joinName">참여할 이름</label>
-        <input id="joinName" className="text-input" autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="이름을 입력해주세요" maxLength={24} required/>
-        <button className="button primary full" disabled={busy||!name.trim()||room.locked}>{busy?<><LoaderCircle className="spin" size={16}/> 참여 중...</>:<>시간표 참여하기 <ArrowRight size={16}/></>}</button>
-      </form>:<form onSubmit={(e)=>{e.preventDefault();onRecover(recoveryCode.trim());}}>
-        <label className="form-label" htmlFor="recoveryCode">내 개인 복구 코드</label>
-        <textarea id="recoveryCode" className="text-input textarea" value={recoveryCode} onChange={e=>setRecoveryCode(e.target.value)} placeholder="기존에 복사한 개인 복구 코드를 붙여 넣으세요" rows={3} required/>
-        <button className="button primary full" disabled={busy||!recoveryCode.trim()}>{busy?<><LoaderCircle className="spin" size={16}/> 확인 중...</>:<>기존 참여 복구 <KeyRound size={16}/></>}</button>
-      </form>}
-      {room.locked&&method==='join'&&<p className="field-error">관리자가 시간표를 잠갔습니다. 지금은 새로운 참여를 할 수 없습니다.</p>}
+      <h2 id="join-title">어떤 이름으로 참여할까요?</h2>
+      <p><strong>{room.title}</strong> 시간표입니다. 기존 참여자는 이름을 누르면 바로 입장할 수 있고, 처음 참여한다면 새 이름을 입력하세요.</p>
+      {members.length>0&&<div className="member-picker">
+        <h3>이미 참여한 팀원 <span>{members.length}명</span></h3>
+        <div className="member-picker-list">
+          {members.map((member,index)=><button className="member-picker-option" key={member.id} type="button" onClick={()=>onSelect(member)} disabled={busy}>
+            <Initial name={member.name} index={index}/>
+            <span>{member.name}</span><ArrowRight size={16}/>
+          </button>)}
+        </div>
+      </div>}
+      <form onSubmit={(e)=>{e.preventDefault();onJoin(name.trim());}}>
+        <label className="form-label" htmlFor="joinName">새로 참여하기</label>
+        <input id="joinName" className="text-input" autoFocus={members.length===0} value={name} onChange={e=>setName(e.target.value)} placeholder="새 이름을 입력해주세요" maxLength={24} required/>
+        <button className="button primary full" disabled={busy||!name.trim()||room.locked}>{busy?<><LoaderCircle className="spin" size={16}/> 등록 중...</>:<>새 이름 등록 <Plus size={16}/></>}</button>
+      </form>
+      {room.locked&&<p className="field-error">방이 잠겨 있어 새 사용자 등록 및 시간 수정은 불가능합니다.</p>}
       <Alert text={error}/>
-      <div className="modal-hint"><ShieldCheck size={15}/> 개인 복구 코드는 다른 사람에게 공유하지 마세요.</div>
+      <div className="modal-hint"><Info size={15}/> 내부 팀용입니다. 공유 링크를 가진 사람은 누구나 이름을 선택해 해당 사용자의 시간을 수정할 수 있습니다.</div>
     </div>
   </div>;
 }
@@ -312,30 +314,6 @@ function RoomPage({roomKey}) {
     window.addEventListener('pointercancel',stop);
     return ()=>{window.removeEventListener('pointerup',stop);window.removeEventListener('pointercancel',stop);};
   },[]);
-
-  // A just-created member is absent from the previously fetched public member list.
-  // Never clear a private session based on a potentially stale roster snapshot.
-  // Verify the saved token directly with the server instead.
-  useEffect(()=>{
-    if(!session?.memberId || !session?.editToken) return;
-    let active = true;
-    api('/rooms/'+roomKey+'/session?memberId='+encodeURIComponent(session.memberId),{
-      headers:{'x-member-token':session.editToken}
-    }).then((verified)=>{
-      if(!active) return;
-      if(verified.name!==session.name) {
-        const updated={...session,name:verified.name};
-        localStorage.setItem(STORAGE_PREFIX+roomKey,JSON.stringify(updated));
-        setSession(updated);
-      }
-    }).catch((e)=>{
-      if(!active || e.status!==401) return;
-      localStorage.removeItem(STORAGE_PREFIX+roomKey);
-      setSession(null);setPending(null);setMode('all');
-      setNameError('이 브라우저의 이전 참여 정보가 유효하지 않습니다. 동일한 이름이 이미 등록되어 있다면 관리자에게 참여자 초기화를 요청해주세요.');
-    });
-    return ()=>{active=false;};
-  },[roomKey,session?.memberId,session?.editToken]);
 
   const days=useMemo(()=>Array.from({length:7},(_,i)=>shiftDate(week,i)),[week]);
   const members=data?.members||[];
@@ -404,7 +382,7 @@ function RoomPage({roomKey}) {
       savingQueue.current=savingQueue.current.catch(()=>{}).then(async()=>{
         try{
           const slots=[...chosen].map(key=>{const [date,index]=key.split('|');return {date,slotIndex:Number(index)};});
-          await api('/rooms/'+roomKey+'/availability',{method:'PUT',headers:{'x-member-token':session.editToken},body:JSON.stringify({memberId:session.memberId,weekStart:weekOfChange,slots})});
+          await api('/rooms/'+roomKey+'/availability',{method:'PUT',body:JSON.stringify({memberId:session.memberId,weekStart:weekOfChange,slots})});
           if(revision.current===thisRevision&&currentWeek.current===weekOfChange){
             setPending(null);setSaveState('saved');await load(true);
           }
@@ -447,44 +425,28 @@ function RoomPage({roomKey}) {
   function enterPointer(date,index){
     if(mode==='mine'&&drag.current)chooseSlot(date,index,drag.current.enabled);
   }
+  function selectMember(member){
+    if(pending || saveState==='saving'){
+      setNameError('이전 사용자의 시간 저장이 완료된 후 다시 선택해주세요.');
+      setError('변경 내용 저장 완료 후 사용자를 전환할 수 있어요.');
+      return;
+    }
+    const next={memberId:member.id,name:member.name};
+    localStorage.setItem(STORAGE_PREFIX+roomKey,JSON.stringify(next));
+    setSession(next);setPending(null);setSaveState('saved');
+    setMode('mine');setSelected(null);setNameError('');
+    setNotice(member.name+'님의 시간표로 전환했어요.');
+  }
   async function join(name){
     setBusyJoin(true);setNameError('');
     try{
       const result=await api('/rooms/'+roomKey+'/join',{method:'POST',body:JSON.stringify({name})});
-      const next={memberId:result.memberId,editToken:result.editToken,name};
+      const next={memberId:result.memberId,name};
       localStorage.setItem(STORAGE_PREFIX+roomKey,JSON.stringify(next));
       setSession(next);setMode('mine');await load(true);
-      setNotice('참여 완료! 오른쪽의 개인 복구 코드를 복사해 안전하게 보관해주세요.');
+      setNotice('참여 완료! 이제 가능한 시간을 선택하세요.');
     }catch(e){setNameError(e.message);}
     finally{setBusyJoin(false);}
-  }
-  async function recover(code){
-    const parts=code.split('.');
-    if(parts.length!==2 || !/^[0-9a-f-]{36}$/.test(parts[0]) || !/^[0-9a-f]{64}$/.test(parts[1])){
-      setNameError('복구 코드 형식이 올바르지 않습니다. 복사한 전체 코드를 입력해주세요.');
-      return;
-    }
-    setBusyJoin(true);setNameError('');
-    try{
-      const result=await api('/rooms/'+roomKey+'/recover',{
-        method:'POST',body:JSON.stringify({memberId:parts[0],editToken:parts[1]})
-      });
-      const next={memberId:result.memberId,editToken:parts[1],name:result.name};
-      localStorage.setItem(STORAGE_PREFIX+roomKey,JSON.stringify(next));
-      setSession(next);setMode('mine');await load(true);
-      setNotice('기존 참여 정보와 선택 시간을 복구했어요.');
-    }catch(e){setNameError(e.message);}
-    finally{setBusyJoin(false);}
-  }
-  async function copyRecoveryCode(){
-    if(!session)return;
-    try{
-      await copyText(session.memberId+'.'+session.editToken);
-      setNotice('개인 복구 코드를 복사했어요. 비공개로 보관해주세요.');
-      setError('');
-    }catch{
-      setError('복구 코드 복사에 실패했어요. 브라우저의 클립보드 권한을 확인해주세요.');
-    }
   }
   async function copyRoomLink(){
     try{await copyText(shareLink(roomKey));setNotice('공유 링크를 복사했어요.');}
@@ -492,10 +454,13 @@ function RoomPage({roomKey}) {
     setTimeout(()=>setNotice(''),4000);
   }
   function exitSession(){
-    if(pending||saveState==='saving')return;
-    if(!window.confirm('다른 이름으로 참여할까요? 기존 시간표는 남아 있으며, 현재 브라우저에서는 기존 이름으로 수정할 수 없게 됩니다.'))return;
+    if(pending || saveState==='saving'){
+      setError('변경 내용을 저장한 후 참여자를 변경할 수 있어요.');
+      return;
+    }
     localStorage.removeItem(STORAGE_PREFIX+roomKey);
     setSession(null);setMode('all');setPending(null);
+    setSelected(null);setNameError('');
   }
   function slotClass(count){
     if(count===0)return 'heat-none';
@@ -568,17 +533,26 @@ function RoomPage({roomKey}) {
           <section className="card recommendations"><div className="card-section-title"><span className="section-icon small-icon amber"><Sparkles size={19}/></span><div><h2>추천 미팅 시간</h2><p>모두가 1시간 이상 가능한 구간</p></div></div>
             {recommendations.length?recommendations.map((item,i)=><button className="recommendation" key={item.date+'-'+item.start} onClick={()=>{setSelected({date:item.date,index:item.start});document.querySelector('.calendar-scroll')?.scrollTo({top:Math.max(0,item.start*32-150),behavior:'smooth'});}}><span className="recommend-rank">{String(i+1).padStart(2,'0')}</span><span><strong>{dateTitle(item.date)} ({DAY_NAMES[days.indexOf(item.date)]})</strong><small>{timeLabel(item.start)} – {timeLabel(item.end)} · {item.duration/60}시간</small></span><ArrowRight size={15}/></button>):<div className="empty-recommend"><Sparkles size={22}/><p>아직 전원 가능한 1시간 이상 구간이 없어요.</p><span>팀원들이 시간을 등록하면 여기에 표시됩니다.</span></div>}
           </section>
-          <section className="card roster"><div className="roster-heading"><h2>참여한 팀원 <span className="count-pill">{total}</span></h2>{session&&<button className="muted-link" onClick={exitSession}><LogOut size={14}/> 이름 변경</button>}</div><div className="roster-list">{members.map((member,i)=><div className="person" key={member.id}><Initial name={member.name} index={i}/><span>{member.name}</span>{member.id===session?.memberId&&<small>나</small>}</div>)}{!members.length&&<p className="empty-hint">아직 참여자가 없어요.</p>}</div></section>
-          {session&&<section className="card recovery-card">
-            <div className="recovery-heading"><span className="section-icon small-icon"><KeyRound size={19}/></span><div><h2>내 개인 복구 코드</h2><p>터널 주소 변경 · 다른 기기 접속 시 사용</p></div></div>
-            <p className="recovery-note">지금 복사해 비공개로 보관하세요. 이 코드로 내 이름과 기존 선택 시간을 다시 불러올 수 있어요.</p>
-            <button className="button subtle full" type="button" onClick={copyRecoveryCode}><Copy size={15}/> 개인 복구 코드 복사</button>
-          </section>}
+          <section className="card roster">
+            <div className="roster-heading">
+              <h2>참여한 팀원 <span className="count-pill">{total}</span></h2>
+              {session&&<button className="muted-link" onClick={exitSession}><UsersRound size={14}/> 다른 이름 선택</button>}
+            </div>
+            <div className="roster-list">
+              {members.map((member,index)=><button className={'person roster-person'+(member.id===session?.memberId?' roster-active':'')} key={member.id} type="button" onClick={()=>selectMember(member)}>
+                <Initial name={member.name} index={index}/>
+                <span>{member.name}</span>
+                {member.id===session?.memberId?<small>선택됨</small>:<ArrowRight size={14}/>}
+              </button>)}
+              {!members.length&&<p className="empty-hint">아직 참여자가 없어요.</p>}
+            </div>
+            <p className="roster-note">이름을 누르면 해당 팀원의 시간표로 전환됩니다.</p>
+          </section>
         </aside>
       </div>
       <div className="below-note"><Info size={15}/> 모든 시간은 한국 표준시(KST) 기준입니다. 선택하지 않은 시간은 참석 가능으로 집계되지 않습니다.</div>
     </main>
-    {!session&&<JoinDialog room={room} onJoin={join} onRecover={recover} busy={busyJoin} error={nameError}/>}
+    {!session&&<JoinDialog room={room} members={members} onJoin={join} onSelect={selectMember} busy={busyJoin} error={nameError}/>}
   </div>;
 }
 

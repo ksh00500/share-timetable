@@ -56,19 +56,6 @@ export async function createApp({ store = createStore(':memory:'), adminPassword
     return { room, weekStart, members: store.members(room.key), slots: store.weekSlots(room.key, weekStart) };
   });
 
-  // Check an existing browser session using its private edit token rather than
-  // assuming a cached public member list is authoritative.
-  app.get('/api/rooms/:key/session', async (request, reply) => {
-    const room = store.room(request.params.key);
-    if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');
-    const memberId = request.query?.memberId;
-    if (typeof memberId !== 'string' || !store.verifyMember(room.key, memberId, request.headers['x-member-token'])) {
-      return err(reply, 401, '기존 참여자 인증 정보가 유효하지 않습니다.');
-    }
-    const member = store.member(memberId, room.key);
-    return { memberId: member.id, name: member.name };
-  });
-
   app.post('/api/rooms/:key/join', async (request, reply) => {
     const room = store.room(request.params.key);
     if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');
@@ -76,24 +63,12 @@ export async function createApp({ store = createStore(':memory:'), adminPassword
     const name = normalizeName(request.body?.name);
     if (name.length < 1 || name.length > 24) return err(reply, 400, '이름은 1~24자로 입력해주세요.');
     try {
-      return reply.code(201).send(store.createMember(room.key, name));
+      const { memberId } = store.createMember(room.key, name);
+      return reply.code(201).send({ memberId });
     } catch (error) {
       if (isSqliteUnique(error)) return err(reply, 409, '이미 등록된 이름입니다. 기존 브라우저에서 접속하거나 관리자에게 문의해주세요.');
       throw error;
     }
-  });
-
-  // Reconnect a member after a Quick Tunnel hostname change or on a new device.
-  // A recovery code combines their public member ID and their private edit token.
-  app.post('/api/rooms/:key/recover', async (request, reply) => {
-    const room = store.room(request.params.key);
-    if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');
-    const { memberId, editToken } = request.body || {};
-    if (typeof memberId !== 'string' || !store.verifyMember(room.key, memberId, editToken)) {
-      return err(reply, 401, '복구 코드가 올바르지 않습니다.');
-    }
-    const member = store.member(memberId, room.key);
-    return { memberId: member.id, name: member.name };
   });
 
   app.put('/api/rooms/:key/availability', async (request, reply) => {
@@ -101,8 +76,8 @@ export async function createApp({ store = createStore(':memory:'), adminPassword
     if (!room) return err(reply, 404, '존재하지 않는 시간표입니다.');
     if (room.locked) return err(reply, 423, '관리자가 이 시간표를 잠갔습니다.');
     const { memberId, weekStart, slots } = request.body || {};
-    if (typeof memberId !== 'string' || !store.verifyMember(room.key, memberId, request.headers['x-member-token'])) {
-      return err(reply, 401, '본인 확인에 실패했습니다. 다시 입장해주세요.');
+    if (typeof memberId !== 'string' || !store.member(memberId, room.key)) {
+      return err(reply, 404, '해당 방에 등록된 참여자가 아닙니다.');
     }
     if (!validDate(weekStart) || mondayOf(weekStart) !== weekStart) return err(reply, 400, '시작 날짜가 올바르지 않습니다.');
     if (!Array.isArray(slots) || slots.length > MAX_SLOTS ||

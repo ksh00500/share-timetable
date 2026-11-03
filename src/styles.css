@@ -37,3 +37,19 @@
 .recovery-heading p{font-size:10px;color:var(--muted);margin-top:4px}
 .recovery-note{font-size:11px;line-height:1.7;color:#80747b;margin-top:14px}
 .recovery-card .button.full{font-size:11px;margin-top:14px}
+
+.member-picker{margin:12px 0 23px;padding:14px;border:1px solid var(--border);border-radius:13px;background:#fffdfd}
+.member-picker h3{display:flex;align-items:center;justify-content:space-between;font-size:12px;margin:0 0 12px}
+.member-picker h3 span{font-size:10px;color:var(--muted);font-weight:500}
+.member-picker-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:240px;overflow-y:auto}
+.member-picker-option{display:flex;align-items:center;gap:9px;border:1px solid #ede4e9;background:white;border-radius:10px;text-align:left;padding:10px;min-width:0;font-size:12px;font-weight:700}
+.member-picker-option:hover{background:#fdf2f7;border-color:#e8b9cd}
+.member-picker-option>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.member-picker-option>svg{color:var(--wine);flex-shrink:0}
+.roster-person{background:white;border:1px solid transparent;border-radius:9px;width:100%;text-align:left;padding:7px 8px}
+.roster-person>span:nth-child(2){flex:1}
+.roster-person:hover{background:#fff7fa;border-color:#f2d5e2}
+.roster-person.roster-active{background:#fdf1f6;border-color:#eed1df}
+.roster-person>svg{color:#a98e9b}
+.roster-note{font-size:10px;line-height:1.7;margin-top:13px;color:#978891}
+@media(max-width:430px){.member-picker-list{grid-template-columns:1fr;max-height:210px}}
