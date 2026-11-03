@@ -9,14 +9,26 @@ const DAY_NAMES = ['월', '화', '수', '목', '금', '토', '일'];
 const STORAGE_PREFIX = 'share-timetable:session:';
 
 async function api(path, options = {}) {
-  const response = await fetch('/api' + path, {
-    ...options,
-    headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) },
-    cache: 'no-store'
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || '요청에 실패했습니다.');
-  return result;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch('/api' + path, {
+      ...options,
+      signal: controller.signal,
+      headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) },
+      cache: 'no-store'
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || '요청에 실패했습니다.');
+    return result;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('서버 응답이 15초 동안 도착하지 않았습니다. 잠시 후 다시 시도해주세요.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function todayKST() {

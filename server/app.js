@@ -15,7 +15,7 @@ export async function createApp({ store = createStore(':memory:'), adminPassword
   const app = Fastify({ logger: false, bodyLimit: 96 * 1024 });
   app.addHook('onClose', async () => store.close());
 
-  const adminOnly = (request, reply) => {
+  const adminOnly = async (request, reply) => {
     if (!adminPassword || adminPassword.length < 12) return err(reply, 503, '관리자 비밀번호를 서버 환경변수에 설정해주세요.');
     if (!safeEqual(request.headers['x-admin-key'], adminPassword)) return err(reply, 401, '관리자 비밀번호가 올바르지 않습니다.');
   };

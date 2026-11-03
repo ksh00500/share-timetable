@@ -17,6 +17,9 @@ test('admin required and room creation validates key', async (t) => {
   assert.equal(invalid.statusCode, 400);
   const created = await app.inject({ method: 'POST', url: '/api/admin/rooms', headers, payload: { key: 'my-team', title: '팀 회의' } });
   assert.equal(created.statusCode, 201);
+  const authorizedList = await app.inject({ method: 'GET', url: '/api/admin/rooms', headers });
+  assert.equal(authorizedList.statusCode, 200);
+  assert.equal(authorizedList.json().rooms[0].key, 'my-team');
   const duplicate = await app.inject({ method: 'POST', url: '/api/admin/rooms', headers, payload: { key: 'my-team', title: '팀 회의' } });
   assert.equal(duplicate.statusCode, 409);
 });
