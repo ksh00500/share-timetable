@@ -34,8 +34,8 @@ openssl rand -hex 24
 생성된 랜덤 문자열을 .env의 **ADMIN_PASSWORD** 값으로 바꾸세요. 기본 예시 비밀번호를 그대로 사용하지 마세요.
 
 ~~~bash
-docker compose up -d --build
-curl http://127.0.0.1:8787/api/health
+docker compose --profile quick up -d --build
+docker compose --profile quick ps
 ~~~
 
 정상이라면 {"ok":true}가 반환됩니다. Docker 데이터는 timetable_data 볼륨에 보존됩니다. 컨테이너를 재생성해도 저장한 시간은 유지됩니다.
@@ -51,7 +51,7 @@ docker compose --profile quick logs -f quick-tunnel
 
 로그에 나오는 `https://...trycloudflare.com` 주소가 공유 URL입니다. 관리자 페이지는 `https://...trycloudflare.com/admin`, 팀 방은 `https://...trycloudflare.com/{key}` 형식입니다.
 
-- `quick-tunnel`은 Linux 호스트 네트워크(`network_mode: host`)로 실행하여 Docker DNS 조회 없이 `http://127.0.0.1:8787`에 연결합니다. 기존 `keyda-tunnel`이나 Cloudflare 설정을 건드리지 않습니다.
+- `quick-tunnel`은 Compose 내부 네트워크로 `http://timetable:3000`에 직접 연결합니다. **호스트 포트를 공개하거나 점유하지 않습니다.** 기존 `keyda-tunnel`이나 Cloudflare 설정을 건드리지 않습니다.
 - Quick Tunnel은 **임시 테스트용**이며 재시작 시 `trycloudflare.com` 주소가 변경될 수 있습니다. 다시 발급된 주소를 팀원에게 공유해야 합니다.
 - 시간표 데이터는 Docker 볼륨에 저장되므로 **터널 URL이 변경되어도 해당 서버의 방과 선택 데이터는 유지**됩니다.
 - 중지는 `docker compose --profile quick down`입니다. 데이터를 유지하려면 `down -v`는 실행하지 마세요.
@@ -60,29 +60,26 @@ docker compose --profile quick logs -f quick-tunnel
 
 ### Quick Tunnel 접속 오류 해결
 
-기존 버전에서 `lookup timetable on 127.0.0.11:53` 오류가 뜬다면 GitHub 최신 설정을 받아 Quick Tunnel 컨테이너를 재생성하세요.
+`Bind for 127.0.0.1:8787 failed: port is already allocated`가 표시되면, 호스트의 8787 포트는 다른 서비스가 사용 중인 것입니다. 이 프로젝트는 **호스트 포트 바인딩을 제거**했고 내부 Docker 네트워크로만 터널에 연결합니다.
 
-~~~bash
+```bash
 git pull
 docker compose --profile quick up -d --build --force-recreate
-curl -i http://127.0.0.1:8787/api/health
-docker compose --profile quick logs --tail=40 quick-tunnel
-~~~
+docker compose --profile quick ps
+docker compose --profile quick logs --tail=35 timetable quick-tunnel
+```
 
-`/api/health`가 `{"ok":true}`를 응답하면 앱 서버까지 연결된 것입니다. 호스트 네트워크 모드는 **Linux Docker 호스트 기준**입니다.
+앱 자체가 정상인지 검사하려면 컨테이너 안에서 다음 명령을 사용하세요.
 
-### 고정 도메인으로 연결할 때만 (선택)
+```bash
+docker compose exec -T timetable node -e "fetch('http://127.0.0.1:3000/api/health').then(async r => console.log(r.status, await r.text())).catch(console.error)"
+```
 
-### Cloudflare Tunnel 연결
+정상 출력: `200 {"ok":true}`. **호스트의 8787 포트로 curl 테스트하지 마세요.** 그 포트는 프로젝트가 사용하지 않으며, 다른 서비스가 응답할 수 있습니다.
 
-기존 Cloudflare Tunnel이 **host 네트워크**에서 실행된다면, 새 Public Hostname의 Service URL을 다음으로 설정합니다.
+### 고정 도메인을 쓰는 경우 (선택)
 
-- Public hostname: 예) timetable.keyda.site (사용할 도메인은 직접 지정)
-- Service URL: http://127.0.0.1:8787
-- 별도 포트포워딩 불필요
-- Docker Compose의 포트 바인딩은 127.0.0.1에만 열려 있으므로 외부에서 포트 8787로 직접 접근할 수 없습니다.
-
-터널이 별도 Docker 네트워크에서 동작한다면, 동일 네트워크에 두 컨테이너를 연결한 뒤 Service URL을 http://share-timetable:3000으로 설정해야 합니다. 이 경우 Compose 네트워크·접근 경로를 직접 맞춰주세요.
+고정 도메인을 연결하려면 기존 cloudflared 컨테이너를 이 Compose 네트워크에 연결하고, 서비스 주소를 `http://timetable:3000`으로 설정하세요. 혹은 별도 호스트 포트를 지정하여 노출할 수 있지만, 포트 충돌 여부를 먼저 확인해야 합니다. Quick Tunnel 운영 시에는 이 단계가 필요 없습니다.
 
 ### 사용법
 

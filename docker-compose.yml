@@ -9,8 +9,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATA_DIR: /app/data
-    ports:
-      - "127.0.0.1:8787:3000"
+    expose:
+      - "3000"
     volumes:
       - timetable_data:/app/data
 
@@ -19,8 +19,7 @@ services:
     container_name: share-timetable-quick-tunnel
     profiles: ["quick"]
     restart: unless-stopped
-    network_mode: host
-    command: tunnel --no-autoupdate --url http://127.0.0.1:8787
+    command: tunnel --no-autoupdate --url http://timetable:3000
     depends_on:
       timetable:
         condition: service_healthy
