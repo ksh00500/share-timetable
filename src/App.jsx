@@ -573,7 +573,7 @@ function RoomPage({roomKey}) {
             <div className="recovery-heading"><span className="section-icon small-icon"><KeyRound size={19}/></span><div><h2>내 개인 복구 코드</h2><p>터널 주소 변경 · 다른 기기 접속 시 사용</p></div></div>
             <p className="recovery-note">지금 복사해 비공개로 보관하세요. 이 코드로 내 이름과 기존 선택 시간을 다시 불러올 수 있어요.</p>
             <button className="button subtle full" type="button" onClick={copyRecoveryCode}><Copy size={15}/> 개인 복구 코드 복사</button>
-          </section>
+          </section>}
         </aside>
       </div>
       <div className="below-note"><Info size={15}/> 모든 시간은 한국 표준시(KST) 기준입니다. 선택하지 않은 시간은 참석 가능으로 집계되지 않습니다.</div>
